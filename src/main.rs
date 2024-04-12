@@ -1,40 +1,30 @@
-use std::collections::HashMap;
-use std::env;
-use std::fs::File;
-use std::io::{Result, Write};
-use lazy_static::lazy_static;
+mod ast;
 
-lazy_static! {
-  static ref GENERATOR: HashMap<&'static str, &'static str> = {
-    let mut map = HashMap::new();
-    map.insert("-koopa", r#"fun @main(): i32 {
-%entry:
-  ret 0
-}
-"#);
-    map.insert("-riscv", r#"  .text
-  .globl main
-main:
-  li a0, 0
-  ret
-"#);
-    map.insert("-perf", r#"  .text
-  .globl main
-main:
-  li a0, 0
-  ret
-"#);
-    map
-  };
-}
+use lalrpop_util::lalrpop_mod;
+use std::env::args;
+use std::fs::read_to_string;
+use std::io::Result;
+
+// 引用 lalrpop 生成的解析器
+// 因为我们刚刚创建了 sysy.lalrpop, 所以模块名是 sysy
+lalrpop_mod!(sysy);
 
 fn main() -> Result<()> {
-  let mut args = env::args();
+  // 解析命令行参数
+  let mut args = args();
   args.next();
   let mode = args.next().unwrap();
-  args.next();
+  let input = args.next().unwrap();
   args.next();
   let output = args.next().unwrap();
-  let mut file = File::create(output)?;
-  write!(file, "{}", GENERATOR[mode.as_str()])
+
+  // 读取输入文件
+  let input = read_to_string(input)?;
+
+  // 调用 lalrpop 生成的 parser 解析输入文件
+  let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
+
+  // 输出解析得到的 AST
+  println!("{:#?}", ast);
+  Ok(())
 }
