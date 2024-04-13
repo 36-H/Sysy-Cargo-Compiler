@@ -1,5 +1,5 @@
 [package]
-name = "sysy_compiler"
+name = "compiler"
 version = "0.1.0"
 edition = "2018"
 
@@ -9,3 +9,4 @@ lalrpop = "0.20.2"
 [dependencies]
 lazy_static = "1.4.0"
 lalrpop-util = { version = "0.20.2", features = ["lexer"] }
+koopa = "0.0.7"
