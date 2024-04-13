@@ -3,7 +3,7 @@ mod irgen;
 
 use lalrpop_util::lalrpop_mod;
 use std::env::args;
-use std::fs::{read_to_string, OpenOptions};
+use std::fs::{read_to_string, File};
 use std::io::{Result, Write};
 
 use crate::irgen::to_ir;
@@ -33,11 +33,8 @@ fn main() -> Result<()> {
     let ir = to_ir(&ast);
     // let driver = koopa::front::Driver::from(ir);
     // let program = driver.generate_program().unwrap();
-    println!("{}",ir);
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(output)?;
+    println!("{}", ir);
+    let mut file = File::create(output).expect("create failed");
     file.write_all(ir.as_bytes())?;
 
     Ok(())
