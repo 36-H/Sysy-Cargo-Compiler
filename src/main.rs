@@ -1,19 +1,30 @@
 mod ast;
 mod irgen;
+extern crate koopa;
+extern crate lalrpop_util;
 
+use koopa::back::KoopaGenerator;
+use koopa::ir::ValueKind;
 use lalrpop_util::lalrpop_mod;
 use std::env::args;
+use std::fmt;
 use std::fs::{read_to_string, File};
-use std::io::{Result, Write};
-use koopa::ir::ValueKind;
-
-use crate::irgen::to_ir;
+use std::io::{self, Write};
+use std::process::exit;
 
 // 引用 lalrpop 生成的解析器
 // 因为我们刚刚创建了 sysy.lalrpop, 所以模块名是 sysy
 lalrpop_mod!(sysy);
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(err) = try_compile() {
+        eprintln!("{}", err);
+        exit(-1);
+    }
+}
+
+fn try_compile() -> Result<(), Error> {
+    let asm_riscv = false;
     // 解析命令行参数
     let mut args = args();
     args.next();
@@ -23,73 +34,47 @@ fn main() -> Result<()> {
     let output = args.next().unwrap();
 
     // 读取输入文件
-    let input = read_to_string(input)?;
+    let input = read_to_string(input).map_err(Error::File)?;
 
     // 调用 lalrpop 生成的 parser 解析输入文件
-    let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
+    let comp_unit = sysy::CompUnitParser::new().parse(&input).unwrap();
     // 输出解析得到的 AST
-    // println!("{:#?}", ast);
+    println!("{:#?}", comp_unit);
     // println!("==================");
-    // 输出Koopa IR
-    let ir = to_ir(&ast);
-    // let driver = koopa::front::Driver::from(ir);
-    // let program = driver.generate_program().unwrap();
-    println!("{}", ir);
-    // let mut file = File::create(output).expect("create failed");
-    // file.write_all(ir.as_bytes())?;
+    // generate IR
+    let program = irgen::generate_program(&comp_unit).map_err(Error::Generate)?;
+    let _ = KoopaGenerator::from_path(output)
+            .map_err(Error::File)?
+            .generate_on(&program)
+            .map_err(Error::Io);
+    Ok(())
+}
 
-    let driver = koopa::front::Driver::from(ir);
-    let program = driver.generate_program().unwrap();
-    let mut asm_code = String::from("  .text\n");
-    for &func in program.func_layout() {
-        // func打印如下
-        // Function(
-        //  1,
-        // )
-        let func_data = program.func(func);
-        // TODO 访问函数
-        // println!(
-        //     "type:{}\nname:{}\nparams:{:?}\n",
-        //     func_data.ty(),func_data.name(),func_data.params()
-        // );
-        let dfg = func_data.dfg();
-        let name = &func_data.name()[1..];
-        asm_code.push_str(&format!("  .global {}\n",name));
-        asm_code.push_str(&format!("{}:\n",name));
-        // 遍历基本块
-        for (&_bb, node) in func_data.layout().bbs() {
-            // 一些必要的处理
-            // println!("bb:{:?}\n",bb);
-            // 遍历指令列表
-            for &inst in node.insts().keys() {
-                let value_data = func_data.dfg().value(inst);
-                // println!("{:?}",value_data);
-                // 访问指令
-                match value_data.kind() {
-                    ValueKind::Integer(int) => {
-                      // 处理 integer 指令
-                      println!("{:?}",int);
-                    }
-                    ValueKind::Return(ret) => {
-                      // 处理 ret 指令
-                      // 先拿ret的返回值 
-                      let value = ret.value().unwrap();
-                      let value_data = dfg.value(value);
-                      match value_data.kind() {
-                        ValueKind::Integer(i) => asm_code.push_str(&format!("  li a0, {}\n",i.value())),
-                        _ => unreachable!(),                         
-                      };
-                      // 
-                      asm_code.push_str(&format!("  ret"));
-                    }
-                    // 其他种类暂时遇不到
-                    _ => unreachable!(),
-                  }
-            }
+/// Error returned by `main` procedure.
+enum Error {
+    InvalidArgs,
+    File(io::Error),
+    Parse,
+    Generate(irgen::Error),
+    Io(io::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InvalidArgs => write!(
+                f,
+                r#"Usage: kira MODE INPUT -o OUTPUT
+
+Options:
+  MODE:   can be `-koopa`, `-riscv` or `-perf`
+  INPUT:  the input SysY source file
+  OUTPUT: the output file"#
+            ),
+            Self::File(err) => write!(f, "invalid input SysY file: {}", err),
+            Self::Parse => write!(f, "error occurred while parsing"),
+            Self::Generate(err) => write!(f, "{}", err),
+            Self::Io(err) => write!(f, "I/O error: {}", err),
         }
     }
-    println!("{}",asm_code);
-    let mut file = File::create(output).expect("create failed");
-    file.write_all(asm_code.as_bytes())?;
-    Ok(())
 }

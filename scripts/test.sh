@@ -1,2 +1,2 @@
 #!/bin/sh
-docker run -it --rm -v /root/workspace/sysy-cargo:/root/compiler maxxing/compiler-dev bash
+docker run -it --rm -v /root/workspace/Sysy-Cargo-Compiler:/root/compiler maxxing/compiler-dev bash
