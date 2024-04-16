@@ -35,7 +35,7 @@ MatchedStmt: Stmt = {
   "return" <exp: (Exp)?> ";" => Stmt::Return(Return { <> }),
 }
 
-Exp: Exp = <unary_exp: UnaryExp> => Exp { <> };
+Exp: Exp = <lor: LOrExp> => Exp { <> };
 
 UnaryExp: UnaryExp = {
   PrimaryExp => UnaryExp::Primary(<>),
@@ -53,6 +53,70 @@ UnaryOp: UnaryOp = {
   "!" => UnaryOp::LNot,
 };
 
+MulExp: MulExp = {
+  UnaryExp => MulExp::Unary(<>),
+  <lhs: MulExp> <op: MulOp> <rhs: UnaryExp> => {
+    MulExp::MulUnary(Box::new(lhs), op, rhs)
+  },
+}
+
+AddExp: AddExp = {
+  MulExp => AddExp::Mul(<>),
+  <lhs: AddExp> <op: AddOp> <rhs: MulExp> => {
+    AddExp::AddMul(Box::new(lhs), op, rhs)
+  },
+}
+
+RelExp: RelExp = {
+  AddExp => RelExp::Add(<>),
+  <lhs: RelExp> <op: RelOp> <rhs: AddExp> => {
+    RelExp::RelAdd(Box::new(lhs), op, rhs)
+  },
+}
+
+EqExp: EqExp = {
+  RelExp => EqExp::Rel(<>),
+  <lhs: EqExp> <op: EqOp> <rhs: RelExp> => {
+    EqExp::EqRel(Box::new(lhs), op, rhs)
+  },
+}
+
+LAndExp: LAndExp = {
+  EqExp => LAndExp::Eq(<>),
+  <lhs: LAndExp> "&&" <rhs: EqExp> => {
+    LAndExp::LAndEq(Box::new(lhs), rhs)
+  },
+}
+
+LOrExp: LOrExp = {
+  LAndExp => LOrExp::LAnd(<>),
+  <lhs: LOrExp> "||" <rhs: LAndExp> => {
+    LOrExp::LOrLAnd(Box::new(lhs), rhs)
+  },
+}
+
+MulOp: MulOp = {
+  "*" => MulOp::Mul,
+  "/" => MulOp::Div,
+  "%" => MulOp::Mod,
+}
+
+AddOp: AddOp = {
+  "+" => AddOp::Add,
+  "-" => AddOp::Sub,
+}
+
+RelOp: RelOp = {
+  "<" => RelOp::Lt,
+  ">" => RelOp::Gt,
+  "<=" => RelOp::Le,
+  ">=" => RelOp::Ge,
+}
+
+EqOp: EqOp = {
+  "==" => EqOp::Eq,
+  "!=" => EqOp::Neq,
+}
 
 Number: i32 = <num: IntConst> => <>;
 
