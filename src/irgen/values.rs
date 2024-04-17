@@ -1,6 +1,4 @@
-use koopa::ir::{Program, Value as IrValue};
-use crate::cur_func;
-use koopa::ir::builder_traits::*;
+use koopa::ir::{builder::LocalInstBuilder, Program, Value as IrValue};
 use super::{scopes::Scopes, Error, Result};
 
 pub enum Value {

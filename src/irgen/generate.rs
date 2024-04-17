@@ -1,7 +1,6 @@
-use crate::{ast::*, cur_func, cur_func_mut};
+use crate::ast::*;
 use koopa::ir::{builder::*, BinaryOp};
 use koopa::ir::{FunctionData, Program, Type};
-
 use super::func::FunctionInfo;
 use super::scopes::Scopes;
 use super::values::ExpValue;

@@ -21,16 +21,13 @@ macro_rules! cur_func {
   };
 }
 
-// pub(crate) use cur_func;
-
-// Returns a mutable reference to the current function information.
-#[macro_export]
+/// Returns a mutable reference to the current function information.
+/// #[macro_export]
 macro_rules! cur_func_mut {
   ($scopes:expr) => {
     $scopes.cur_func.as_mut().unwrap()
   };
 }
-// pub(crate) use cur_func_mut;
 
 impl<'ast> Scopes<'ast> {
   /// Creates a new `Scopes`.

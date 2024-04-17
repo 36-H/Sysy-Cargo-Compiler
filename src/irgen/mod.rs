@@ -1,4 +1,5 @@
 mod func;
+#[macro_use]
 mod scopes;
 mod values;
 mod generate;

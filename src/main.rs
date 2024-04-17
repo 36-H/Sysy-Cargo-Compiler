@@ -1,5 +1,8 @@
 mod ast;
+#[macro_use]
 mod irgen;
+#[macro_use]
+mod asmgen;
 extern crate koopa;
 extern crate lalrpop_util;
 
@@ -24,14 +27,8 @@ fn main() {
 }
 
 fn try_compile() -> Result<(), Error> {
-    let asm_riscv = false;
-    // 解析命令行参数
-    let mut args = args();
-    args.next();
-    let mode = args.next().unwrap();
-    let input = args.next().unwrap();
-    args.next();
-    let output = args.next().unwrap();
+    //解析命令行参数
+    let (mode, input, output) = parse_args()?;
 
     // 读取输入文件
     let input = read_to_string(input).map_err(Error::File)?;
@@ -43,18 +40,20 @@ fn try_compile() -> Result<(), Error> {
     // println!("==================");
     // generate IR
     let program = irgen::generate_program(&comp_unit).map_err(Error::Generate)?;
-    let _ = KoopaGenerator::from_path(output)
+    if matches!(mode, Mode::Koopa) {
+        return KoopaGenerator::from_path(output.clone())
             .map_err(Error::File)?
             .generate_on(&program)
             .map_err(Error::Io);
-    Ok(())
+    }
+    // generate RISC-V assembly
+    asmgen::generate_asm(&program, &output).map_err(Error::Io)
 }
 
 /// Error returned by `main` procedure.
 enum Error {
     InvalidArgs,
     File(io::Error),
-    Parse,
     Generate(irgen::Error),
     Io(io::Error),
 }
@@ -72,9 +71,32 @@ Options:
   OUTPUT: the output file"#
             ),
             Self::File(err) => write!(f, "invalid input SysY file: {}", err),
-            Self::Parse => write!(f, "error occurred while parsing"),
             Self::Generate(err) => write!(f, "{}", err),
             Self::Io(err) => write!(f, "I/O error: {}", err),
         }
+    }
+}
+
+enum Mode {
+    /// Compile SysY to Koopa IR.
+    Koopa,
+    /// Compile SysY to RISC-V assembly.
+    Riscv,
+}
+
+/// Parses the arguments, returns `Error` if error occurred.
+fn parse_args() -> Result<(Mode, String, String), Error> {
+    let mut args = args();
+    args.next();
+    match (args.next(), args.next(), args.next(), args.next()) {
+        (Some(m), Some(input), Some(o), Some(output)) if o == "-o" => {
+            let mode = match m.as_str() {
+                "-koopa" => Mode::Koopa,
+                "-riscv" => Mode::Riscv,
+                _ => return Err(Error::InvalidArgs),
+            };
+            Ok((mode, input, output))
+        }
+        _ => Err(Error::InvalidArgs),
     }
 }
