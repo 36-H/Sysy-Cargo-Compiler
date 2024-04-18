@@ -1,10 +1,11 @@
-use crate::ast::*;
-use koopa::ir::{builder::*, BinaryOp};
-use koopa::ir::{FunctionData, Program, Type};
+use super::eval::Evaluate;
 use super::func::FunctionInfo;
 use super::scopes::Scopes;
-use super::values::ExpValue;
-use super::{Error, Result};
+use super::values::{ExpValue, Initializer, Value};
+use super::{DimsToType, Error, Result};
+use crate::ast::*;
+use koopa::ir::{builder::*, BinaryOp, TypeKind};
+use koopa::ir::{FunctionData, Program, Type};
 
 pub trait GenerateProgram<'ast> {
     type Out;
@@ -80,9 +81,153 @@ impl<'ast> GenerateProgram<'ast> for Block {
 
     fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
         scopes.enter();
-        self.stmt.generate(program, scopes)?;
+        for item in &self.items {
+            item.generate(program, scopes)?;
+        }
         scopes.exit();
         Ok(())
+    }
+}
+impl<'ast> GenerateProgram<'ast> for BlockItem {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        match self {
+            Self::Decl(decl) => decl.generate(program, scopes),
+            Self::Stmt(stmt) => stmt.generate(program, scopes),
+        }
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for Decl {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        match self {
+            Self::Const(c) => c.generate(program, scopes),
+            Self::Var(v) => v.generate(program, scopes),
+        }
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for VarDef {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        // generate type and initializer
+        let ty = self.dims.to_type(scopes)?;
+        let init = self
+            .init
+            .as_ref()
+            .map(|i| i.generate(program, scopes)?.reshape(&ty))
+            .transpose()?;
+        // generate variable
+        let value = if scopes.is_global() {
+            let init = match init {
+                Some(init) => init.into_const(program, scopes)?,
+                None => program.new_value().zero_init(ty),
+            };
+            let value = program.new_value().global_alloc(init);
+            program.set_value_name(value, Some(format!("@{}", self.id)));
+            value
+        } else {
+            let info = cur_func!(scopes);
+            let alloc = info.new_alloc(program, ty, Some(&self.id));
+            if let Some(init) = init {
+                init.into_stores(program, scopes, alloc);
+            }
+            alloc
+        };
+        // add to scope
+        scopes.new_value(&self.id, Value::Value(value))?;
+        Ok(())
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for InitVal {
+    type Out = Initializer;
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        Ok(match self {
+            Self::Exp(exp) => {
+                if scopes.is_global() {
+                    Initializer::Const(exp.eval(scopes).ok_or(Error::FailedToEval)?)
+                } else {
+                    Initializer::Value(exp.generate(program, scopes)?.into_int(program, scopes)?)
+                }
+            }
+        })
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for VarDecl {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        for def in &self.defs {
+            def.generate(program, scopes)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for ConstDecl {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        for def in &self.defs {
+            def.generate(program, scopes)?;
+        }
+        Ok(())
+    }
+}
+impl<'ast> GenerateProgram<'ast> for ConstDef {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        // generate type and initializer
+        let ty = self.dims.to_type(scopes)?;
+        let init = self.init.generate(program, scopes)?.reshape(&ty)?;
+        // generate constant
+        if ty.is_i32() {
+            match init {
+                Initializer::Const(num) => scopes.new_value(&self.id, Value::Const(num))?,
+                _ => unreachable!(),
+            }
+        } else {
+            let value = if scopes.is_global() {
+                let init = init.into_const(program, scopes)?;
+                let value = program.new_value().global_alloc(init);
+                program.set_value_name(value, Some(format!("@{}", self.id)));
+                value
+            } else {
+                let info = cur_func!(scopes);
+                let alloc = info.new_alloc(program, ty, Some(&self.id));
+                init.into_stores(program, scopes, alloc);
+                alloc
+            };
+            // add to scope
+            scopes.new_value(&self.id, Value::Value(value))?;
+        }
+        Ok(())
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for ConstInitVal {
+    type Out = Initializer;
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        Ok(match self {
+            Self::Exp(exp) => Initializer::Const(exp.generate(program, scopes)?),
+        })
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for ConstExp {
+    type Out = i32;
+
+    fn generate(&'ast self, _: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        self.eval(scopes).ok_or(Error::FailedToEval)
     }
 }
 
@@ -91,7 +236,101 @@ impl<'ast> GenerateProgram<'ast> for Stmt {
 
     fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
         match self {
+            Self::Assign(a) => a.generate(program, scopes),
             Self::Return(s) => s.generate(program, scopes),
+        }
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for Assign {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        // generate value and left-value pointer
+        let exp = self
+            .exp
+            .generate(program, scopes)?
+            .into_int(program, scopes)?;
+        let lval = self.lval.generate(program, scopes)?.into_ptr()?;
+        // generate store
+        let info = cur_func!(scopes);
+        let store = info.new_value(program).store(exp, lval);
+        info.push_inst(program, store);
+        Ok(())
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for LVal {
+    type Out = ExpValue;
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        // handle constant
+        let mut value = match scopes.value(&self.id)? {
+            Value::Value(value) => *value,
+            Value::Const(num) => {
+                return if self.indices.is_empty() {
+                    let value = cur_func!(scopes).new_value(program).integer(*num);
+                    Ok(ExpValue::Int(value))
+                } else {
+                    Err(Error::DerefInt)
+                };
+            }
+        };
+        // check type
+        let mut is_ptr_ptr = false;
+        let mut dims = match scopes.ty(program, value).kind() {
+            TypeKind::Pointer(base) => {
+                let mut ty = base;
+                let mut dims = 0;
+                loop {
+                    ty = match ty.kind() {
+                        TypeKind::Array(base, _) => base,
+                        TypeKind::Pointer(base) => {
+                            is_ptr_ptr = true;
+                            base
+                        }
+                        _ => break dims,
+                    };
+                    dims += 1;
+                }
+            }
+            _ => 0,
+        };
+        // generate load for array parameter
+        if is_ptr_ptr {
+            let info = cur_func!(scopes);
+            value = info.new_value(program).load(value);
+            info.push_inst(program, value);
+        }
+        // handle array dereference
+        for (i, index) in self.indices.iter().enumerate() {
+            // check if dereferencing integer
+            if dims == 0 {
+                return Err(Error::DerefInt);
+            }
+            dims -= 1;
+            // generate index
+            let index = index.generate(program, scopes)?.into_val(program, scopes)?;
+            // generate pointer calculation
+            let info = cur_func!(scopes);
+            value = if is_ptr_ptr && i == 0 {
+                info.new_value(program).get_ptr(value, index)
+            } else {
+                info.new_value(program).get_elem_ptr(value, index)
+            };
+            info.push_inst(program, value);
+        }
+        // generate pointer calculation for function arguments
+        if dims == 0 {
+            Ok(ExpValue::IntPtr(value))
+        } else {
+            if !is_ptr_ptr || !self.indices.is_empty() {
+                let info = cur_func!(scopes);
+                let zero = info.new_value(program).integer(0);
+                value = info.new_value(program).get_elem_ptr(value, zero);
+                info.push_inst(program, value);
+            }
+            Ok(ExpValue::ArrPtr(value))
         }
     }
 }
@@ -136,6 +375,7 @@ impl<'ast> GenerateProgram<'ast> for PrimaryExp {
     fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
         match self {
             Self::Exp(exp) => exp.generate(program, scopes),
+            Self::LVal(lval) => lval.generate(program, scopes),
             Self::Number(num) => Ok(ExpValue::Int(
                 cur_func!(scopes).new_value(program).integer(*num),
             )),

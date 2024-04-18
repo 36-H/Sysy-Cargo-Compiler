@@ -15,17 +15,32 @@ pub enum FuncType {
 }
 #[derive(Debug)]
 pub struct Block {
-    pub stmt: Stmt,
+    pub items: Vec<BlockItem>,
 }
+
+#[derive(Debug)]
+pub enum BlockItem {
+    Decl(Decl),
+    Stmt(Stmt),
+}
+
 #[derive(Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum Stmt {
+    Assign(Assign),
     Return(Return),
 }
+#[derive(Debug)]
+pub struct Assign {
+    pub lval: LVal,
+    pub exp: Exp,
+}
+
 #[derive(Debug)]
 pub struct Return {
     pub exp: Option<Exp>,
 }
+
 #[derive(Debug)]
 pub struct Exp {
     pub lor: LOrExp,
@@ -60,6 +75,7 @@ pub enum UnaryExp {
 #[derive(Debug)]
 pub enum PrimaryExp {
     Exp(Box<Exp>),
+    LVal(LVal),
     Number(i32),
 }
 #[derive(Debug)]
@@ -111,4 +127,49 @@ pub enum EqOp {
     Eq,
     // "!="
     Neq,
+}
+
+#[derive(Debug)]
+pub enum Decl {
+    Const(ConstDecl),
+    Var(VarDecl),
+}
+
+#[derive(Debug)]
+pub struct ConstDecl {
+    pub defs: Vec<ConstDef>,
+}
+
+#[derive(Debug)]
+pub struct ConstDef {
+    pub id: String,
+    pub dims: Vec<ConstExp>,
+    pub init: ConstInitVal,
+}
+#[derive(Debug)]
+pub struct ConstExp {
+    pub exp: Exp,
+}
+#[derive(Debug)]
+pub enum ConstInitVal {
+    Exp(ConstExp),
+}
+#[derive(Debug)]
+pub struct VarDecl {
+    pub defs: Vec<VarDef>,
+}
+#[derive(Debug)]
+pub struct VarDef {
+    pub id: String,
+    pub dims: Vec<ConstExp>,
+    pub init: Option<InitVal>,
+}
+#[derive(Debug)]
+pub enum InitVal {
+    Exp(Exp),
+}
+#[derive(Debug)]
+pub struct LVal {
+    pub id: String,
+    pub indices: Vec<Exp>,
 }

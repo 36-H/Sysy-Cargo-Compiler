@@ -25,17 +25,64 @@ FuncDef: FuncDef = {
 
 FuncType: FuncType = "int" => FuncType::Int;
 
-Block: Block = "{" <stmt: Stmt> "}" => Block { <> };
+Block: Block = "{" <items: (BlockItem)*> "}" => Block { <> };
+
+BlockItem: BlockItem = {
+  Decl => BlockItem::Decl(<>),
+  Stmt => BlockItem::Stmt(<>),
+}
+
+Decl: Decl = {
+  ConstDecl => Decl::Const(<>),
+  VarDecl => Decl::Var(<>),
+}
+
+ConstDecl: ConstDecl = {
+  "const" "int" <def: ConstDef> <mut defs: ("," <ConstDef>)*> ";" => {
+    defs.insert(0, def);
+    ConstDecl { defs }
+  },
+}
+
+ConstInitVal: ConstInitVal = {
+  ConstExp => ConstInitVal::Exp(<>),
+}
+
+VarDecl: VarDecl = {
+  "int" <def: VarDef> <mut defs: ("," <VarDef>)*> ";" => {
+    defs.insert(0, def);
+    VarDecl { defs }
+  },
+}
+VarDef: VarDef = {
+  <id: Ident> <dims: ("[" <ConstExp> "]")*> <init: ("=" <InitVal>)?> => {
+    VarDef { <> }
+  },
+}
+
+InitVal: InitVal = {
+  Exp => InitVal::Exp(<>),
+}
+
+ConstDef: ConstDef = {
+  <id: Ident> <dims: ("[" <ConstExp> "]")*> "=" <init: ConstInitVal> => {
+    ConstDef { <> }
+  },
+}
+
+ConstExp: ConstExp = <exp: Exp> => ConstExp { <> };
 
 Stmt: Stmt = {
   MatchedStmt => <>,
 };
 
 MatchedStmt: Stmt = {
+  <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign(Assign { <> }),
   "return" <exp: (Exp)?> ";" => Stmt::Return(Return { <> }),
 }
 
 Exp: Exp = <lor: LOrExp> => Exp { <> };
+LVal: LVal = <id: Ident> <indices: ("[" <Exp> "]")*> => LVal { <> };
 
 UnaryExp: UnaryExp = {
   PrimaryExp => UnaryExp::Primary(<>),
@@ -45,6 +92,7 @@ UnaryExp: UnaryExp = {
 
 PrimaryExp: PrimaryExp = {
   "(" <Exp> ")" => PrimaryExp::Exp(Box::new(<>)),
+  LVal => PrimaryExp::LVal(<>),
   Number => PrimaryExp::Number(<>),
 };
 
