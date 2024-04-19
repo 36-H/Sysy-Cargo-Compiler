@@ -240,9 +240,47 @@ impl<'ast> GenerateProgram<'ast> for Stmt {
             Self::Return(s) => s.generate(program, scopes),
             Self::ExpStmt(e) => e.generate(program, scopes),
             Self::Block(b) => b.generate(program, scopes),
+            Self::If(s) => s.generate(program, scopes),
         }
     }
 }
+
+impl<'ast> GenerateProgram<'ast> for If {
+    type Out = ();
+  
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+      // generate condition
+      let cond = self
+        .cond
+        .generate(program, scopes)?
+        .into_int(program, scopes)?;
+      // generate branch and then/else basic block
+      let info = cur_func_mut!(scopes);
+      let then_bb = info.new_bb(program, Some("%if_then"));
+      let else_bb = info.new_bb(program, Some("%if_else"));
+      let br = info.new_value(program).branch(cond, then_bb, else_bb);
+      info.push_inst(program, br);
+      info.push_bb(program, then_bb);
+      // generate then statement
+      self.then.generate(program, scopes)?;
+      // generate jump and end basic block
+      let info = cur_func_mut!(scopes);
+      let end_bb = info.new_bb(program, Some("%if_end"));
+      let jump = info.new_value(program).jump(end_bb);
+      info.push_inst(program, jump);
+      info.push_bb(program, else_bb);
+      // generate else statement
+      if let Some(else_then) = &self.else_then {
+        else_then.generate(program, scopes)?;
+      }
+      // generate jump
+      let info = cur_func_mut!(scopes);
+      let jump = info.new_value(program).jump(end_bb);
+      info.push_inst(program, jump);
+      info.push_bb(program, end_bb);
+      Ok(())
+    }
+  }
 
 impl<'ast> GenerateProgram<'ast> for ExpStmt {
     type Out = ();

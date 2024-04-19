@@ -1,31 +1,31 @@
   .text
   .globl main
 main:
-  addi sp, sp, -32
-.Lentry_0:
-  j .L3
-.L3:
-  li t0, 10
-  sw t0, 24(sp)
-  lw t0, 24(sp)
-  sw t0, 28(sp)
-  lw t0, 28(sp)
-  li t1, 1
-  add t0, t0, t1
-  sw t0, 16(sp)
-  lw t0, 16(sp)
-  sw t0, 24(sp)
-  lw t0, 24(sp)
+  addi sp, sp, -16
+.Lentry_2:
+  j .L0
+.L0:
+  li t0, 1
+  bnez t0, .Lif_then_4
+  j .Lif_else_1
+.Lif_then_4:
+  li t0, 1
   sw t0, 8(sp)
+  j .Lend_5
+.L7:
+  j .Lif_end_3
+.Lif_else_1:
+  j .Lif_end_3
+.Lif_end_3:
+  li t0, 0
+  sw t0, 8(sp)
+  j .Lend_5
+.L6:
+  j .Lend_5
+.Lend_5:
   lw t0, 8(sp)
   sw t0, 12(sp)
-  j .Lend_1
-.L2:
-  j .Lend_1
-.Lend_1:
-  lw t0, 12(sp)
-  sw t0, 20(sp)
-  lw a0, 20(sp)
-  addi sp, sp, 32
+  lw a0, 12(sp)
+  addi sp, sp, 16
   ret
 

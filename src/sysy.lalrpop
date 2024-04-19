@@ -74,6 +74,7 @@ ConstExp: ConstExp = <exp: Exp> => ConstExp { <> };
 
 Stmt: Stmt = {
   MatchedStmt => <>,
+  OpenStmt => <>,
 };
 
 MatchedStmt: Stmt = {
@@ -81,7 +82,20 @@ MatchedStmt: Stmt = {
   "return" <exp: (Exp)?> ";" => Stmt::Return(Return { <> }),
   Block => Stmt::Block(<>),
   <exp: (Exp)?> ";" => Stmt::ExpStmt(ExpStmt { <> }),
-  
+  "if" "(" <cond: Exp> ")" <then: MatchedStmt>
+  "else" <else_then: MatchedStmt> => {
+    Stmt::If(Box::new(If { cond, then, else_then: Some(else_then) }))
+  },
+}
+
+OpenStmt: Stmt = {
+  "if" "(" <cond: Exp> ")" <then: Stmt> => {
+    Stmt::If(Box::new(If { cond, then, else_then: None }))
+  },
+  "if" "(" <cond: Exp> ")" <then: MatchedStmt>
+  "else" <else_then: OpenStmt> => {
+    Stmt::If(Box::new(If { cond, then, else_then: Some(else_then) }))
+  },
 }
 
 Exp: Exp = <lor: LOrExp> => Exp { <> };
