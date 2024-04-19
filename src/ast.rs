@@ -29,6 +29,12 @@ pub enum BlockItem {
 pub enum Stmt {
     Assign(Assign),
     Return(Return),
+    ExpStmt(ExpStmt),
+    Block(Block),
+}
+#[derive(Debug)]
+pub struct ExpStmt {
+    pub exp: Option<Exp>,
 }
 #[derive(Debug)]
 pub struct Assign {

@@ -79,6 +79,9 @@ Stmt: Stmt = {
 MatchedStmt: Stmt = {
   <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign(Assign { <> }),
   "return" <exp: (Exp)?> ";" => Stmt::Return(Return { <> }),
+  Block => Stmt::Block(<>),
+  <exp: (Exp)?> ";" => Stmt::ExpStmt(ExpStmt { <> }),
+  
 }
 
 Exp: Exp = <lor: LOrExp> => Exp { <> };

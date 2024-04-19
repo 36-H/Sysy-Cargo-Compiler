@@ -238,7 +238,20 @@ impl<'ast> GenerateProgram<'ast> for Stmt {
         match self {
             Self::Assign(a) => a.generate(program, scopes),
             Self::Return(s) => s.generate(program, scopes),
+            Self::ExpStmt(e) => e.generate(program, scopes),
+            Self::Block(b) => b.generate(program, scopes),
         }
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for ExpStmt {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        if let Some(exp) = &self.exp {
+            exp.generate(program, scopes)?;
+        }
+        Ok(())
     }
 }
 
