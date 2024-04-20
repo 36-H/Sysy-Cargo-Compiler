@@ -1,4 +1,4 @@
 int main() {
-  if (1) return 1;
-  return 0;
+  while (1) break;
+  return 2;
 }
