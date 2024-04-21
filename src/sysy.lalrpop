@@ -12,18 +12,34 @@ match {
   _
 }
 
-// 定义 CompUnit, 其返回值类型为 String
-// parser 在解析完成后的行为是返回 FuncDef 的值
-pub CompUnit: CompUnit = <func_def: FuncDef> => CompUnit { <> };
+pub CompUnit: CompUnit = <items: (GlobalItem)*> => CompUnit { <> };
 
-// 同上, 不解释
+GlobalItem: GlobalItem = {
+  Decl => GlobalItem::Decl(<>),
+  FuncDef => GlobalItem::FuncDef(<>),
+}
+
 FuncDef: FuncDef = {
-  <func_type: FuncType> <ident: Ident> "(" ")" <block: Block> => {
-    FuncDef { <> }
-  }
-};
+  <head: FuncDefHead> ")" <block: Block> => {
+    FuncDef { func_type: head.0, ident: head.1,  params: Vec::new(), block }
+  },
+  <head: FuncDefHead> <param: FuncFParam> <mut params: ("," <FuncFParam>)*> ")"
+  <block: Block> => {
+    params.insert(0, param);
+    FuncDef { func_type: head.0, ident: head.1, params, block }
+  },
+}
 
-FuncType: FuncType = "int" => FuncType::Int;
+FuncDefHead: (FuncType, String) = {
+  "void" <id: Ident> "(" => (FuncType::Void, <>),
+  "int" <id: Ident> "(" => (FuncType::Int, <>),
+}
+
+FuncFParam: FuncFParam = {
+  "int" <id: Ident> <dims: ("[" "]" <("[" <ConstExp> "]")*>)?> => {
+    FuncFParam { <> }
+  },
+}
 
 Block: Block = "{" <items: (BlockItem)*> "}" => Block { <> };
 
@@ -111,6 +127,11 @@ LVal: LVal = <id: Ident> <indices: ("[" <Exp> "]")*> => LVal { <> };
 
 UnaryExp: UnaryExp = {
   PrimaryExp => UnaryExp::Primary(<>),
+  <id: Ident> "(" ")" => UnaryExp::Call(FuncCall { id, args: Vec::new() }),
+  <id: Ident> "(" <arg: Exp> <mut args: ("," <Exp>)*> ")" => {
+    args.insert(0, arg);
+    UnaryExp::Call(FuncCall { id, args })
+  },
   "+" <UnaryExp> => <>,
   <op: UnaryOp> <exp: UnaryExp> => UnaryExp::Unary(op, Box::new(exp)),
 };

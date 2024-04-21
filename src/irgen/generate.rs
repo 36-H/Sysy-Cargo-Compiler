@@ -17,9 +17,49 @@ impl<'ast> GenerateProgram<'ast> for CompUnit {
     type Out = ();
 
     fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
-        let func_def = &self.func_def;
-        func_def.generate(program, scopes)?;
+        let mut new_decl = |name, params_typs, ret_type| {
+            scopes
+                .new_func(
+                    name,
+                    program.new_func(FunctionData::new_decl(
+                        format!("@{}", name),
+                        params_typs,
+                        ret_type,
+                    )),
+                )
+                .unwrap();
+        };
+        // generate SysY library function declarations
+        new_decl("getint", vec![], Type::get_i32());
+        new_decl("getch", vec![], Type::get_i32());
+        new_decl(
+            "getarray",
+            vec![Type::get_pointer(Type::get_i32())],
+            Type::get_i32(),
+        );
+        new_decl("putint", vec![Type::get_i32()], Type::get_unit());
+        new_decl("putch", vec![Type::get_i32()], Type::get_unit());
+        new_decl(
+            "putarray",
+            vec![Type::get_i32(), Type::get_pointer(Type::get_i32())],
+            Type::get_unit(),
+        );
+        new_decl("starttime", vec![], Type::get_unit());
+        new_decl("stoptime", vec![], Type::get_unit());
+        for item in &self.items {
+            item.generate(program, scopes)?;
+        }
         Ok(())
+    }
+}
+impl<'ast> GenerateProgram<'ast> for GlobalItem {
+    type Out = ();
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        match self {
+            Self::Decl(decl) => decl.generate(program, scopes),
+            Self::FuncDef(def) => def.generate(program, scopes),
+        }
     }
 }
 
@@ -27,7 +67,12 @@ impl<'ast> GenerateProgram<'ast> for FuncDef {
     type Out = ();
 
     fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
-        let params_ty = vec![];
+        // generate parameter types and return type
+        let params_ty = self
+            .params
+            .iter()
+            .map(|p| p.generate(program, scopes))
+            .collect::<Result<Vec<_>>>()?;
         let ret_ty = self.func_type.generate(program, scopes)?;
         // create new fucntion
         let mut data = FunctionData::new(format!("@{}", self.ident), params_ty, ret_ty);
@@ -35,6 +80,8 @@ impl<'ast> GenerateProgram<'ast> for FuncDef {
         let entry = data.dfg_mut().new_bb().basic_block(Some("%entry".into()));
         let end = data.dfg_mut().new_bb().basic_block(Some("%end".into()));
         let cur = data.dfg_mut().new_bb().basic_block(None);
+        // get parameter list
+        let params = data.params().to_owned();
         // generate return value
         let mut ret_val = None;
         if matches!(self.func_type, FuncType::Int) {
@@ -51,6 +98,13 @@ impl<'ast> GenerateProgram<'ast> for FuncDef {
         }
         info.push_bb(program, cur);
         scopes.enter();
+        for (param, value) in self.params.iter().zip(params) {
+            let ty = program.func(func).dfg().value(value).ty().clone();
+            let alloc = info.new_alloc(program, ty, Some(&param.id));
+            let store = info.new_value(program).store(value, alloc);
+            info.push_inst(program, store);
+            scopes.new_value(&param.id, Value::Value(alloc))?;
+        }
         // update scope
         scopes.new_func(&self.ident, func)?;
         scopes.cur_func = Some(info);
@@ -62,6 +116,17 @@ impl<'ast> GenerateProgram<'ast> for FuncDef {
         info.seal_entry(program, cur);
         info.seal_func(program);
         Ok(())
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for FuncFParam {
+    type Out = Type;
+
+    fn generate(&'ast self, _: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        Ok(match &self.dims {
+            Some(dims) => Type::get_pointer(dims.to_type(scopes)?),
+            None => Type::get_i32(),
+        })
     }
 }
 
@@ -510,6 +575,7 @@ impl<'ast> GenerateProgram<'ast> for UnaryExp {
     fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
         match self {
             Self::Primary(exp) => exp.generate(program, scopes),
+            Self::Call(call) => call.generate(program, scopes),
             Self::Unary(op, exp) => {
                 let exp = exp.generate(program, scopes)?.into_int(program, scopes)?;
                 let info = cur_func!(scopes);
@@ -521,6 +587,45 @@ impl<'ast> GenerateProgram<'ast> for UnaryExp {
                 info.push_inst(program, value);
                 Ok(ExpValue::Int(value))
             }
+        }
+    }
+}
+
+impl<'ast> GenerateProgram<'ast> for FuncCall {
+    type Out = ExpValue;
+
+    fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
+        // get function from scope
+        let func = scopes.func(&self.id)?;
+        // get function type
+        let (params_ty, is_void) = match program.func(func).ty().kind() {
+            TypeKind::Function(params, ret) => (params.clone(), ret.is_unit()),
+            _ => unreachable!(),
+        };
+        // generate arguments
+        let args = self
+            .args
+            .iter()
+            .map(|a| a.generate(program, scopes)?.into_val(program, scopes))
+            .collect::<Result<Vec<_>>>()?;
+        // check argument types
+        if params_ty.len() != args.len() {
+            return Err(Error::ArgMismatch);
+        }
+        for (param_ty, arg) in params_ty.iter().zip(&args) {
+            if param_ty != &scopes.ty(program, *arg) {
+                return Err(Error::ArgMismatch);
+            }
+        }
+        // generate function call
+        let info = cur_func!(scopes);
+        let call = info.new_value(program).call(func, args);
+        info.push_inst(program, call);
+        // return value if not void
+        if is_void {
+            Ok(ExpValue::Void)
+        } else {
+            Ok(ExpValue::Int(call))
         }
     }
 }

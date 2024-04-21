@@ -1,13 +1,25 @@
 #[derive(Debug)]
 pub struct CompUnit {
-    pub func_def: FuncDef,
+    pub items: Vec<GlobalItem>,
+}
+#[derive(Debug)]
+pub enum GlobalItem {
+    Decl(Decl),
+    FuncDef(FuncDef),
 }
 #[derive(Debug)]
 pub struct FuncDef {
     pub func_type: FuncType,
     pub ident: String,
+    pub params: Vec<FuncFParam>,
     pub block: Block,
 }
+#[derive(Debug)]
+pub struct FuncFParam {
+    pub id: String,
+    pub dims: Option<Vec<ConstExp>>,
+}
+
 #[derive(Debug)]
 pub enum FuncType {
     Void,
@@ -98,8 +110,16 @@ pub enum LOrExp {
 #[derive(Debug)]
 pub enum UnaryExp {
     Primary(PrimaryExp),
+    Call(FuncCall),
     Unary(UnaryOp, Box<UnaryExp>),
 }
+
+#[derive(Debug)]
+pub struct FuncCall {
+    pub id: String,
+    pub args: Vec<Exp>,
+  }
+
 #[derive(Debug)]
 pub enum PrimaryExp {
     Exp(Box<Exp>),

@@ -2,10 +2,10 @@ use crate::asm_value;
 
 use super::builder::AsmBuilder;
 use super::info::ProgramInfo;
-use super::values::AsmValue;
+use super::values::{AsmValue, LocalValue};
 use asmgen::func::FunctionInfo;
 use koopa::ir::entities::ValueData;
-use koopa::ir::values::{Binary, Branch, Jump, Load, Return, Store};
+use koopa::ir::values::*;
 use koopa::ir::{BasicBlock, BinaryOp, Function, FunctionData, Program, Value, ValueKind};
 use std::fs::File;
 use std::io::{Result, Write};
@@ -121,8 +121,59 @@ impl<'p, 'i> GenerateAsm<'p, 'i> for ValueData {
             ValueKind::Load(v) => v.generate(f, info, self),
             ValueKind::Binary(v) => v.generate(f, info, self),
             ValueKind::Branch(v) => v.generate(f, info),
+            ValueKind::GlobalAlloc(v) => v.generate(f, info),
+            ValueKind::ZeroInit(v) => v.generate(f, info, self),
+            ValueKind::Call(v) => v.generate(f, info, self),
+            ValueKind::Integer(v) => v.generate(f, info),
             _ => unimplemented!(),
         }
+    }
+}
+
+impl<'p, 'i> GenerateAsm<'p, 'i> for Integer {
+    type Out = ();
+
+    fn generate(&self, f: &mut File, _: &mut ProgramInfo) -> Result<Self::Out> {
+        writeln!(f, "  .word {}", self.value())
+    }
+}
+
+impl<'p, 'i> GenerateValueAsm<'p, 'i> for Call {
+    type Out = ();
+
+    fn generate(&self, f: &mut File, info: &mut ProgramInfo, v: &ValueData) -> Result<Self::Out> {
+        let args = self
+            .args()
+            .iter()
+            .map(|v| Ok(v.generate(f, info)?.into()))
+            .collect::<Result<Vec<LocalValue>>>()?;
+        for (i, arg) in args.into_iter().enumerate() {
+            AsmValue::from(arg).write_to(f, "t0")?;
+            AsmValue::Arg(i).read_from(f, "t0", "t1")?;
+        }
+        let callee = self.callee().generate(f, info)?;
+        AsmBuilder::new(f, "t0").call(callee)?;
+        if !v.used_by().is_empty() {
+            asm_value!(info, v).read_from(f, "a0", "t0")
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl<'p, 'i> GenerateValueAsm<'p, 'i> for ZeroInit {
+    type Out = ();
+
+    fn generate(&self, f: &mut File, _: &mut ProgramInfo, v: &ValueData) -> Result<Self::Out> {
+        writeln!(f, "  .zero {}", v.ty().size())
+    }
+}
+
+impl<'p, 'i> GenerateAsm<'p, 'i> for GlobalAlloc {
+    type Out = ();
+
+    fn generate(&self, f: &mut File, info: &mut ProgramInfo) -> Result<Self::Out> {
+        info.program().borrow_value(self.init()).generate(f, info)
     }
 }
 

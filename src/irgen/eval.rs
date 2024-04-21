@@ -90,6 +90,7 @@ impl Evaluate for UnaryExp {
                 UnaryOp::Neg => -exp,
                 UnaryOp::LNot => (exp == 0) as i32,
             }),
+            Self::Call(_) => None,
         }
     }
 }

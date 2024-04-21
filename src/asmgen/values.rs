@@ -83,3 +83,27 @@ impl<'i> From<Option<Slot>> for AsmValue<'i> {
         }
     }
 }
+
+impl<'i> From<LocalValue> for AsmValue<'i> {
+    fn from(v: LocalValue) -> Self {
+        match v {
+            LocalValue::Local(slot) => Self::Local(slot),
+            LocalValue::Const(num) => Self::Const(num),
+        }
+    }
+}
+
+pub enum LocalValue {
+    Local(Slot),
+    Const(i32),
+}
+
+impl<'i> From<AsmValue<'i>> for LocalValue {
+    fn from(value: AsmValue) -> Self {
+        match value {
+            AsmValue::Local(slot) => Self::Local(slot),
+            AsmValue::Const(num) => Self::Const(num),
+            _ => unreachable!(),
+        }
+    }
+}
