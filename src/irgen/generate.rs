@@ -221,6 +221,11 @@ impl<'ast> GenerateProgram<'ast> for InitVal {
                     Initializer::Value(exp.generate(program, scopes)?.into_int(program, scopes)?)
                 }
             }
+            Self::List(exps) => Initializer::List(
+                exps.iter()
+                    .map(|v| v.generate(program, scopes))
+                    .collect::<Result<_>>()?,
+            ),
         })
     }
 }
@@ -284,6 +289,11 @@ impl<'ast> GenerateProgram<'ast> for ConstInitVal {
     fn generate(&'ast self, program: &mut Program, scopes: &mut Scopes<'ast>) -> Result<Self::Out> {
         Ok(match self {
             Self::Exp(exp) => Initializer::Const(exp.generate(program, scopes)?),
+            Self::List(list) => Initializer::List(
+                list.iter()
+                    .map(|v| v.generate(program, scopes))
+                    .collect::<Result<_>>()?,
+            ),
         })
     }
 }

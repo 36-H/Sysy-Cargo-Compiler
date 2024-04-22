@@ -1,8 +1,4 @@
-int var;
-
-const int one = 1;
-
 int main() {
-  return var + one;
+  int arr[2][3] = {1, 2};
+  return arr[0][2];
 }
-

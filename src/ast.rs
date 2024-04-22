@@ -201,6 +201,7 @@ pub struct ConstExp {
 #[derive(Debug)]
 pub enum ConstInitVal {
     Exp(ConstExp),
+    List(Vec<ConstInitVal>),
 }
 #[derive(Debug)]
 pub struct VarDecl {
@@ -215,6 +216,7 @@ pub struct VarDef {
 #[derive(Debug)]
 pub enum InitVal {
     Exp(Exp),
+    List(Vec<InitVal>),
 }
 #[derive(Debug)]
 pub struct LVal {

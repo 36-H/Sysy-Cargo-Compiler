@@ -5,7 +5,7 @@ use super::info::ProgramInfo;
 use super::values::{AsmValue, LocalValue};
 use asmgen::func::FunctionInfo;
 use koopa::ir::entities::ValueData;
-use koopa::ir::values::*;
+use koopa::ir::{values::*, TypeKind};
 use koopa::ir::{BasicBlock, BinaryOp, Function, FunctionData, Program, Value, ValueKind};
 use std::fs::File;
 use std::io::{Result, Write};
@@ -125,8 +125,66 @@ impl<'p, 'i> GenerateAsm<'p, 'i> for ValueData {
             ValueKind::ZeroInit(v) => v.generate(f, info, self),
             ValueKind::Call(v) => v.generate(f, info, self),
             ValueKind::Integer(v) => v.generate(f, info),
+            ValueKind::Aggregate(v) => v.generate(f, info),
+            ValueKind::GetElemPtr(v) => v.generate(f, info, self),
+            ValueKind::GetPtr(v) => v.generate(f, info, self),
             _ => unimplemented!(),
         }
+    }
+}
+
+impl<'p, 'i> GenerateValueAsm<'p, 'i> for GetPtr {
+    type Out = ();
+
+    fn generate(&self, f: &mut File, info: &mut ProgramInfo, v: &ValueData) -> Result<Self::Out> {
+        let src = self.src().generate(f, info)?;
+        if src.is_ptr() {
+            src.write_to(f, "t0")?;
+        } else {
+            src.write_addr_to(f, "t0")?;
+        }
+        self.index().generate(f, info)?.write_to(f, "t1")?;
+        let size = match v.ty().kind() {
+            TypeKind::Pointer(base) => base.size(),
+            _ => unreachable!(),
+        };
+        let mut builder = AsmBuilder::new(f, "t2");
+        builder.muli("t1", "t1", size as i32)?;
+        builder.op2("add", "t0", "t0", "t1")?;
+        asm_value!(info, v).read_from(f, "t0", "t1")
+    }
+}
+
+impl<'p, 'i> GenerateValueAsm<'p, 'i> for GetElemPtr {
+    type Out = ();
+
+    fn generate(&self, f: &mut File, info: &mut ProgramInfo, v: &ValueData) -> Result<Self::Out> {
+        let src = self.src().generate(f, info)?;
+        if src.is_ptr() {
+            src.write_to(f, "t0")?;
+        } else {
+            src.write_addr_to(f, "t0")?;
+        }
+        self.index().generate(f, info)?.write_to(f, "t1")?;
+        let size = match v.ty().kind() {
+            TypeKind::Pointer(base) => base.size(),
+            _ => unreachable!(),
+        };
+        let mut builder = AsmBuilder::new(f, "t2");
+        builder.muli("t1", "t1", size as i32)?;
+        builder.op2("add", "t0", "t0", "t1")?;
+        asm_value!(info, v).read_from(f, "t0", "t1")
+    }
+}
+
+impl<'p, 'i> GenerateAsm<'p, 'i> for Aggregate {
+    type Out = ();
+
+    fn generate(&self, f: &mut File, info: &mut ProgramInfo) -> Result<Self::Out> {
+        for &elem in self.elems() {
+            info.program().borrow_value(elem).generate(f, info)?;
+        }
+        Ok(())
     }
 }
 

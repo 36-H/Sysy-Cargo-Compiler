@@ -73,6 +73,15 @@ impl<'i> AsmValue<'i> {
             Self::Void => Ok(()),
         }
     }
+    
+    pub fn write_addr_to(&self, f: &mut File, reg: &'static str) -> Result<()> {
+        let mut builder = AsmBuilder::new(f, reg);
+        match self {
+            Self::Global(symbol) => builder.la(reg, symbol),
+            Self::Local(slot) => builder.addi(reg, "sp", slot.offset as i32),
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl<'i> From<Option<Slot>> for AsmValue<'i> {

@@ -36,7 +36,7 @@ fn try_compile() -> Result<(), Error> {
     // 调用 lalrpop 生成的 parser 解析输入文件
     let comp_unit = sysy::CompUnitParser::new().parse(&input).unwrap();
     // 输出解析得到的 AST
-    println!("{:#?}", comp_unit);
+    // println!("{:#?}", comp_unit);
     // println!("==================");
     // generate IR
     let program = irgen::generate_program(&comp_unit).map_err(Error::Generate)?;

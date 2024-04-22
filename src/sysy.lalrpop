@@ -62,6 +62,11 @@ ConstDecl: ConstDecl = {
 
 ConstInitVal: ConstInitVal = {
   ConstExp => ConstInitVal::Exp(<>),
+  "{" "}" => ConstInitVal::List(Vec::new()),
+  "{" <init: ConstInitVal> <mut inits: ("," <ConstInitVal>)*> "}" => {
+    inits.insert(0, init);
+    ConstInitVal::List(inits)
+  },
 }
 
 VarDecl: VarDecl = {
@@ -78,6 +83,11 @@ VarDef: VarDef = {
 
 InitVal: InitVal = {
   Exp => InitVal::Exp(<>),
+  "{" "}" => InitVal::List(Vec::new()),
+  "{" <init: InitVal> <mut inits: ("," <InitVal>)*> "}" => {
+    inits.insert(0, init);
+    InitVal::List(inits)
+  },
 }
 
 ConstDef: ConstDef = {
